@@ -1,0 +1,60 @@
+---
+title: "Tokenization"
+author: "Lars Hinrichs"
+date: "9/23/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE,
+                      message = F,
+                      warning = F)
+```
+
+## Packages
+
+```{r}
+library(pacman)
+p_load(rio, tidyverse, tidytext, gt)
+```
+
+
+## Load data
+
+```{r}
+df <- import("data/wte_data_complete_2021-09-22.xlsx")
+```
+
+## Tokenization
+
+```{r}
+df_tokens <- 
+  df %>% 
+  unnest_tokens(word, text)
+```
+
+## Count words
+
+```{r}
+final_stop <- 
+  data.frame(
+    word = c("i’m", "it’s"),
+    lexicon = "custom"
+  ) %>% 
+  rbind(stop_words)
+
+df_tokens %>% 
+  mutate(word = tolower(word)) %>% 
+  count(word, sort = T) %>% 
+  anti_join(final_stop) %>% 
+  slice_max(n, n=10) %>% 
+  gt()
+
+```
+```{r}
+df_tokens %>% 
+  export("data/df_tokens.rds")
+```
+
+
+

@@ -1,0 +1,354 @@
+---
+title: "wranglingI"
+output: html_document
+---
+
+
+```{r}
+library(pacman)
+p_load(rio, tidyr, tidyverse, tidytext, gt, dplyr, ggplot2, wordcloud, tokenizers, tidytext, textdata, RColorBrewer, knitr, lubridate)
+
+```
+
+
+library(ldatuning)
+```{r}
+df <- import("wte_data_complete_2021-09-22.xlsx")
+```
+
+
+##Lower cases
+```{r}
+df_lower <- df %>% 
+  mutate(text = tolower(text)) %>%
+  mutate(thread_title = tolower(thread_title))
+```
+
+# Replace
+```{r}
+df_lower$text<- str_replace_all(df_lower$text, "wks", "weeks") %>%
+  str_replace_all("ftm", "first_time_mom") %>%
+  str_replace_all("gd", "gestational_diabetes") %>%
+  str_replace_all("gestation diabetes", "gestational_diabetes") %>%
+  str_replace_all("hbp", "high_bp") %>%
+  str_replace_all("pree", "preeclampsia") %>%
+  str_replace_all("pre-e", "preeclampsia") %>%
+  str_replace_all("c section", "c-section") %>%
+  str_replace_all("c- section", "c-section") %>%
+  str_replace_all("csection", "c-section") %>%
+  str_replace_all("bp", "blood_pressure") %>%
+  str_replace_all("stm", "second_time_mom") %>%
+  str_replace_all("hg", "hyperemesis_gravidarum") %>%
+  str_replace_all("bfp", "big_fat_positive") %>%
+  str_replace_all("u/s", "ultrasound") %>%
+  str_replace_all("sono", "ultrasound") %>%
+  str_replace_all("ultrasounds", "ultrasound") %>%
+  str_replace_all("edd", "estimated_delivery_date") %>%  
+  str_replace_all("ttc", "trying_to_conceive") %>% 
+  str_replace_all("’", "'") %>%
+  str_replace_all("lbs", "pounds")
+```
+#removed "hb" (heart beat) --> issues with hbp; removed str_replace_all("ob", "obgyn")
+
+
+## Clarifying with Dr. Lars
+
+full terms --> abbrebiation to catch in the topic modeling? 
+or gestional diabetes --> gd so defferentiate from diabetes
+  str_replace_all("w", "weeks") %>%
+  str_replace_all("weeks", "week") %>%
+  str_replace_all("days", "day") %>%
+  str_replace_all("bumps", "bump") %>%
+  str_replace_all("pregnancy", "pregnant") %>%
+  str_replace_all("feel", "feeling") %>%
+  str_replace_all("lbs", "pounds") %>%
+  str_replace_all("dr", "doctor") %>%
+  str_replace_all("doctors", "doctor") %>%
+  str_replace_all("pregnancy", "pregnant") 
+
+##Tokenization
+```{r}
+df_tokens <-  df_lower %>%
+  unnest_tokens(word, text)
+```
+
+```{r}
+df_tokens %>% 
+  count(word, sort = T) %>%
+  slice_max(n, n = 10)
+```
+
+
+# Removing digits and common words by adding them to stop words #
+
+```{r}
+final_stop <- 
+  data.frame(
+    word = c("im", "ive", "dont", "off", "and", "doesnt", "ill", "havent", "wont", "didnt", "i'm", "it's", "don't"), 
+    lexicon = "custom") %>%
+  rbind(stop_words)
+```
+
+# Tokenizing #
+```{r}
+df_tokens  <- df_tokens %>% 
+  anti_join(final_stop)
+```
+
+
+```{r}
+head(df_tokens$word, 10)
+```
+
+
+
+```{r}
+df_tokens %>%
+  count(word, sort = TRUE)
+```
+
+## Remove any words that consist only of numerals. 
+
+```{r}
+df_tokens <- 
+  df_tokens %>% 
+  filter(str_detect(word, "[a-z]"))
+```
+
+## Frequently Used Words
+
+```{r}
+df_tokens %>%
+  count(word, sort = TRUE) %>% 
+  with(wordcloud(word, n, max.words = 90)) 
+```
+
+```{r}
+get_sentiments("bing") %>% 
+  filter(word == "sharp")
+```
+## Sentiment analysis with inner join
+```{r}
+head(df_tokens)
+```
+
+## Bing_Negative
+```{r}
+bing_neg <- get_sentiments("bing") %>%
+  filter(!word=="bump", sentiment == "negative") %>% 
+  filter(!word=="bumps", sentiment == "negative") %>%     
+  filter(!word=="skinny", sentiment == "negative")
+
+  # Non-positive terms: tops, lean (leaning vs. lean protein), defeated (negative, why under positive sentiment?)
+
+```
+
+
+## Bing_Positive
+```{r}
+bing_pos <- get_sentiments("bing") %>%
+  filter(sentiment == "positive")
+bing_pos
+```
+
+## How to select random sample
+```{r}
+df_lower %>% 
+  filter(str_detect(text, "bump")) %>% 
+  slice_sample(n=50) %>% 
+  pull(text)
+## to make sure bump is used to describe pregnant belly (neutral)
+```
+
+```{r}
+df_lower %>% 
+  filter(str_detect(text, "bumps")) %>% 
+  slice_sample(n=50) %>% 
+  pull(text)
+```
+
+```{r}
+df_lower %>% 
+  filter(str_detect(text, "skinny")) %>% 
+  slice_sample(n=50) %>% 
+  pull(text)
+```
+ 
+## Negative terms: bloated, swollen, hangs, funny, joke
+
+## Non-Negative terms: bumps, bump, skinny
+
+## Does "cheap" have negative meanings?  "cheaper" was in bing_postive
+```{r}
+df_lower %>% 
+  filter(str_detect(text, "cheap")) %>% 
+  slice_sample(n=50) %>% 
+  pull(text)
+```
+```{r}
+df_lower %>% 
+  filter(str_detect(text, "slowly")) %>% 
+  slice_sample(n=50) %>% 
+  pull(text)
+```
+# Positive terms: tops, sharp, lean, cheaper, boom,  defeated?
+
+# Non-positive terms: tops, lean (leaning vs. lean protein), defeated (negative, why under positive sentiment?), sharp (negative meaning)
+```{r}
+df_lower %>% 
+  filter(str_detect(text, "sharp")) %>% 
+  slice_sample(n=50) %>% 
+  pull(text)
+```
+
+```{r}
+bing_neg_r <- get_sentiments("bing") %>%
+  filter(!word=="bump", sentiment == "negative") %>% 
+  filter(!word=="bumps", sentiment == "negative") %>%     
+  filter(!word=="skinny", sentiment == "negative") 
+bing_pos_r <- get_sentiments("bing") %>%
+  filter(!word=="tops", sentiment == "positive") %>%   
+  filter(!word=="lean", sentiment == "positive") %>%   
+  filter(!word=="defeated", sentiment == "positive")
+```
+
+
+## Bing_neg w/o "Bump"
+```{r}
+df_tokens %>% 
+  inner_join(bing_neg_r) %>% 
+  count(word, sort = TRUE)
+```
+## Bing_pos 
+```{r}
+df_tokens %>% 
+  inner_join(bing_pos_r) %>% 
+  count(word, sort = TRUE)
+```
+
+
+```{r}
+get_sentiments("bing")
+bing_all <- 
+  get_sentiments("bing") %>% 
+  filter(!word=="bump") %>% 
+  filter(!word=="bumps") %>% 
+  filter(!word=="skinny") %>% 
+  filter(!word=="tops") %>%   
+  filter(!word=="lean") %>%   
+  filter(!word=="defeated")
+```
+
+```{r}
+df_sentiment <- df_tokens %>% 
+  inner_join(get_sentiments("bing")) %>% 
+  count(word, sentiment, sort = TRUE) %>%
+  pivot_wider(names_from = sentiment, values_from = n, values_fill = 0) %>% 
+  mutate(sentiment = positive - negative)
+
+df_sentiment
+```
+
+
+```{r}
+df_tokens <- 
+  df_tokens %>% 
+  mutate(
+    date_2weeks = date %>%
+      cut(breaks = "2 weeks") %>% 
+      as.Date(),
+    date_weekly = date %>% 
+      cut(breaks = "1 week") %>% 
+      as.Date()
+    )
+
+df_tokens
+```
+
+## Weekly
+```{r}
+# df_tokens$month <- floor_date(df_tokens$date, "month")
+
+df_sent <- 
+  df_tokens %>% 
+  inner_join(bing_all) %>% 
+  count(date_weekly, sentiment) %>% 
+  pivot_wider(names_from = sentiment, values_from = n, values_fill = 0) %>% 
+  mutate(sentiment = positive - negative)
+
+df_sent
+```
+
+
+
+```{r}
+p_sent_line <- 
+  ggplot(df_sent, aes(date_weekly, sentiment)) + 
+  geom_line(show.legend = FALSE) 
+
+p_sent_line
+```
+
+
+```{r}
+p_sent_smooth <- 
+  ggplot(df_sent, 
+         aes(date_weekly, sentiment)) + 
+  geom_smooth(show.legend = FALSE,
+              span = 0.12,
+              se = F,
+              color = "black") +
+  theme_light()
+
+p_sent_smooth
+```
+
+
+## Biweekly
+```{r}
+df_sent_2wks <- 
+  df_tokens %>% 
+  inner_join(bing_all) %>% 
+  count(date_2weeks, sentiment) %>% 
+  pivot_wider(names_from = sentiment, values_from = n, values_fill = 0) %>% 
+  mutate(sentiment = positive - negative)
+
+df_sent_2wks
+```
+
+```{r}
+p_sent_line_2wks <- 
+  ggplot(df_sent_2wks, aes(date_2weeks, sentiment)) + 
+  geom_line(show.legend = FALSE) 
+
+p_sent_line_2wks
+
+p_sent_smooth_2wks <- 
+  ggplot(df_sent_2wks, 
+         aes(date_2weeks, sentiment)) + 
+  geom_smooth(show.legend = FALSE,
+              span = 0.12,
+              se = F,
+              color = "black") +
+  theme_light()
+
+p_sent_smooth_2wks
+```
+
+
+## look at the data by 2 wks timeline -- function
+
+## biwkly or using span --> credible 
+## line_geom with 2weeks/wkly
+## smooth
+
+# How can we conclude here? 
+```{r}
+
+```
+
+# Next step? n-gram? 
+
+# topic modeling? 
+
+
